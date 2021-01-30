@@ -8,9 +8,11 @@ import ifcopenshell, ifcopenshell.geom
 
 import OCC.Core.gp, OCC.Core.Bnd, OCC.Core.BRepBuilderAPI, OCC.Core.BRepExtrema, OCC.Core.TopoDS, OCC.Core.TopExp, OCC.Core.TopAbs, OCC.Core.BRepMesh, OCC.Core.BRep, OCC.Core.TopLoc
 
+ON_EDGE = OCC.Core.BRepExtrema.BRepExtrema_IsOnEdge
+
 from xml.dom.minidom import parse
 
-ifcfn, fn, fn2, fn3 = sys.argv[1:]
+ifcfn, fn, fn2, fn3, fn4 = sys.argv[1:]
 
 # @todo the OCCT BVH tree we used doesn't do ray intersection, so we compute AABB from the box (which is only a good solution for AA rays). Upgrade to the new QBVH tree in OCCT?
 ifc_file = ifcopenshell.open(ifcfn)
@@ -22,7 +24,7 @@ tree = ifcopenshell.geom.tree(ifc_file, tree_settings)
 # @todo add a prototype to tree that stores individual faces?
 
 # @todo do we really need to create shapes twice?
-shape_settings = ifcopenshell.geom.settings(USE_PYTHON_OPENCASCADE=True)
+shape_settings = ifcopenshell.geom.settings(USE_PYTHON_OPENCASCADE=True, APPLY_LAYERSETS=True)
 
 shape_dict = {}
 face_style_dict = {}
@@ -148,7 +150,9 @@ assert len(groups1) == len(groups2)
 
 for ii, (g, gg) in enumerate(zip(groups1, groups2)):
 
+    projection = g
     g = g.parentNode
+    
     nm = g.getAttribute("ifc:name")
     m4 = numpy.array(json.loads(g.getAttribute("ifc:plane")))
     m3 = numpy.array(json.loads(g.getAttribute("ifc:matrix3")))
@@ -190,12 +194,19 @@ for ii, (g, gg) in enumerate(zip(groups1, groups2)):
         closest_face = None
         closest_point = None
         
+        p.style = "fill: white"
+        
         for c in candidates:
             if c.is_a("IfcSpace") or c.is_a("IfcOpeningElement"):
                 continue
             shp = shape_dict[c.GlobalId]
             dss = OCC.Core.BRepExtrema.BRepExtrema_DistShapeShape(E, shp)
             for iii in range(1, dss.NbSolution() + 1):
+                if dss.SupportTypeShape1(iii) != ON_EDGE:
+                    print("Not on edge")
+                    #@todo pick 0?
+                    continue
+                
                 u = dss.ParOnEdgeS1(iii)
                 ff = dss.SupportOnShape2(iii)
                 
@@ -205,22 +216,34 @@ for ii, (g, gg) in enumerate(zip(groups1, groups2)):
                     closest_face = OCC.Core.TopoDS.topods_Face(ff)
                     closest_point = dss.PointOnShape1(iii)
                     
+        if closest_face is None:
+            print("No face recovered")
+            continue
+            
+            
         clr = face_style_dict[closest_face]
+        clr_svg = clr_obj = clr
+        if clr[0] == -1.:
+            clr_svg = 1., 1., 1., 1.
+            clr_obj = 0.6, 0.6, 0.6, 1.0        
+        
         id = "".join(c for c in nm+closest.Name if c.isalnum())
+        
+        p.setAttribute('style', "fill: rgba(%s)" % ", ".join(str(f * 255.) for f in clr_svg))
         
         v_ray[1] = (closest_point.X(), closest_point.Y(), closest_point.Z())
         
-        obj.write(id + "ray", clr, v_ray, i_ray)
+        obj.write(id + "ray", clr_obj, v_ray, i_ray)
         
         edge_loop_to_face = lambda edge_loop: list(map(operator.itemgetter(0), edge_loop))
                 
         segments = ["M"+s.strip() for s in d.split("M")[1:]]
         vs_is = [(list(map(project, vs)), ids) for vs, ids in map(parse_path, segments)]     
-        obj.write(id + "outer", clr, *vs_is[0])
+        obj.write(id + "outer", clr_obj, *vs_is[0])
         
         if len(vs_is) == 1:        
             i_face = edge_loop_to_face(vs_is[0][1])
-            obj.write(id + "face", clr, vs_is[0][0], [i_face])
+            obj.write(id + "face", clr_obj, vs_is[0][0], [i_face])
         else:
             all_vs = []
             all_idxs = []
@@ -231,4 +254,13 @@ for ii, (g, gg) in enumerate(zip(groups1, groups2)):
             coords = sum(mesh(loops_to_face(all_vs[all_idxs[0]], [all_vs[ii] for ii in all_idxs[1:]])), ())
             coords = [(c.X(), c.Y(), c.Z()) for c in coords]
             idxs = [(3*i+0,3*i+1,3*i+2) for i in range(len(coords) // 3)]
-            obj.write(id + "face", clr, coords, idxs)
+            obj.write(id + "face", clr_obj, coords, idxs)
+
+    # swap the XML nodes from the files
+    g.removeChild(projection)
+    gg.setAttribute('class', 'projection')
+    g.appendChild(gg)
+
+data = dom1.toxml()
+data = data.encode('ascii', 'xmlcharrefreplace')
+open(fn4, 'wb').write(data)
