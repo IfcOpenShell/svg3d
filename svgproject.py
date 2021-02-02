@@ -218,18 +218,20 @@ for ii, (g, gg) in enumerate(zip(groups1, groups2)):
                     
         if closest_face is None:
             print("No face recovered")
-            continue
+            clr = (-1., -1., -1., 1.)
+        else:    
+            clr = face_style_dict[closest_face]
             
-            
-        clr = face_style_dict[closest_face]
-        clr_svg = clr_obj = clr
+        clr_obj = clr
+        svg_fill = "rgba(%s)" % ", ".join(str(f * 255.) for f in clr)
+        
         if clr[0] == -1.:
-            clr_svg = 1., 1., 1., 1.
-            clr_obj = 0.6, 0.6, 0.6, 1.0        
+            svg_fill = "none"
+            clr_obj = 0.6, 0.6, 0.6, 1.0
         
         id = "".join(c for c in nm+closest.Name if c.isalnum())
         
-        p.setAttribute('style', "fill: rgba(%s)" % ", ".join(str(f * 255.) for f in clr_svg))
+        p.setAttribute('style', "fill: " + svg_fill)
         
         v_ray[1] = (closest_point.X(), closest_point.Y(), closest_point.Z())
         
