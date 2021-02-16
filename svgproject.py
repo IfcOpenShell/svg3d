@@ -14,6 +14,13 @@ from xml.dom.minidom import parse
 
 ifcfn, fn, fn2, fn3, fn4 = sys.argv[1:]
 
+
+dom1 = parse(fn)
+dom2 = parse(fn2)
+
+svg1 = dom1.childNodes[0]
+svg2 = dom2.childNodes[0]
+
 # @todo the OCCT BVH tree we used doesn't do ray intersection, so we compute AABB from the box (which is only a good solution for AA rays). Upgrade to the new QBVH tree in OCCT?
 ifc_file = ifcopenshell.open(ifcfn)
 tree_settings = ifcopenshell.geom.settings()
@@ -98,7 +105,34 @@ class obj_model:
             print("f", *(i + self.N for i in f), file=self.F)
             
         self.N += len(vs)
+        
+obj = obj_model(fn3)
 
+hatches = set()
+
+def create_pattern(name, h_or_v, spacing):
+    spacing = str(spacing / 50.)
+
+    x2 = spacing if h_or_v.lower() == 'h' else '0'
+    y2 = spacing if h_or_v.lower() == 'h' else '0'
+
+    defs = svg1.getElementsByTagName('defs')[0]
+    pat = dom1.createElement('pattern')
+    pat.setAttribute('id', name)
+    # pat.setAttribute('viewBox', ",".join(map(str, (0,0,spacing,spacing))))
+    pat.setAttribute('width', spacing)
+    pat.setAttribute('height', spacing)
+    pat.setAttribute('patternTransform', 'translate(0,0) scale(1,1)')
+    pat.setAttribute('patternUnits', 'userSpaceOnUse')
+    line = dom1.createElement('line')
+    line.setAttribute('x1', '0')
+    line.setAttribute('y1', spacing)
+    line.setAttribute('x2', x2)
+    line.setAttribute('y2', y2)
+    line.setAttribute('style', 'stroke: black')
+    pat.appendChild(line)
+    defs.appendChild(pat)
+    
 to_exclude = sum(map(ifc_file.by_type, ("IfcOpeningElement", "IfcSpace")), [])
 for e in ifcopenshell.geom.iterate(shape_settings, ifc_file, exclude=to_exclude):
     shape_dict[e.data.guid] = e.geometry
@@ -108,20 +142,32 @@ for e in ifcopenshell.geom.iterate(shape_settings, ifc_file, exclude=to_exclude)
         subshapes.append(it.Value())
         it.Next()
     assert len(subshapes) == len(e.styles)
-    for ss, st in zip(subshapes, e.styles):
+    
+    for ss, st, sid in zip(subshapes, e.styles, e.style_ids):
+        
+        ref = None
+
+        if sid != -1:                
+            style = ifc_file.get_inverse(ifc_file[sid])[0].Styles
+            fills = [i for i in style if i.is_a("IfcFillAreaStyle")]
+            if fills:
+                nm = 'hatch_%d' % fills[0].id()
+                ref = 'url(#%s)' % nm
+                
+                if fills[0] not in hatches:
+                    hatches.add(fills[0])
+                    sdi = {s.is_a(): s for s in fills[0].FillStyles}
+                    clr = sdi.get('IfcColourRgb')
+                    if clr:
+                        clr.Red, clr.Green, clr.Blue
+                    _, h_or_v, spacing = fills[0].Name.split("_")
+                    create_pattern(nm, h_or_v, float(spacing))
+    
         exp = OCC.Core.TopExp.TopExp_Explorer(ss, OCC.Core.TopAbs.TopAbs_FACE)
         while exp.More():
-            face_style_dict[exp.Current()] = st
+            face_style_dict[exp.Current()] = st, ref
             exp.Next()
             
-obj = obj_model(fn3)
-
-dom1 = parse(fn)
-dom2 = parse(fn2)
-
-svg1 = dom1.childNodes[0]
-svg2 = dom2.childNodes[0]
-
 def yield_groups(n):
     if n.nodeType == n.ELEMENT_NODE and n.tagName == "g":
         yield n
@@ -219,8 +265,12 @@ for ii, (g, gg) in enumerate(zip(groups1, groups2)):
         if closest_face is None:
             print("No face recovered")
             clr = (-1., -1., -1., 1.)
+            id = "".join(c for c in nm if c.isalnum())
+            hatch_ref = None
         else:    
-            clr = face_style_dict[closest_face]
+            clr, hatch_ref = face_style_dict[closest_face]
+            id = "".join(c for c in nm+closest.Name if c.isalnum())
+            
             
         clr_obj = clr
         svg_fill = "rgba(%s)" % ", ".join(str(f * 255.) for f in clr)
@@ -228,14 +278,15 @@ for ii, (g, gg) in enumerate(zip(groups1, groups2)):
         if clr[0] == -1.:
             svg_fill = "none"
             clr_obj = 0.6, 0.6, 0.6, 1.0
-        
-        id = "".join(c for c in nm+closest.Name if c.isalnum())
-        
+            
+        if hatch_ref:
+            svg_fill = hatch_ref
+                
         p.setAttribute('style', "fill: " + svg_fill)
         
-        v_ray[1] = (closest_point.X(), closest_point.Y(), closest_point.Z())
-        
-        obj.write(id + "ray", clr_obj, v_ray, i_ray)
+        if closest:
+            v_ray[1] = (closest_point.X(), closest_point.Y(), closest_point.Z())
+            obj.write(id + "ray", clr_obj, v_ray, i_ray)
         
         edge_loop_to_face = lambda edge_loop: list(map(operator.itemgetter(0), edge_loop))
                 
