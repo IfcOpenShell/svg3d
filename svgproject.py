@@ -110,7 +110,7 @@ obj = obj_model(fn3)
 
 hatches = set()
 
-def create_pattern(name, h_or_v, spacing):
+def create_pattern(name, h_or_v, spacing, rgb=None):
     spacing = str(spacing / 50.)
 
     x2 = spacing if h_or_v.lower() == 'h' else '0'
@@ -129,7 +129,10 @@ def create_pattern(name, h_or_v, spacing):
     line.setAttribute('y1', spacing)
     line.setAttribute('x2', x2)
     line.setAttribute('y2', y2)
-    line.setAttribute('style', 'stroke: black')
+    clr = 'black'
+    if rgb:
+        clr = "rgba(%s)" % ", ".join(str(f * 255.) for f in rgb)
+    line.setAttribute('style', 'stroke: %s' % clr)
     pat.appendChild(line)
     defs.appendChild(pat)
     
@@ -158,10 +161,11 @@ for e in ifcopenshell.geom.iterate(shape_settings, ifc_file, exclude=to_exclude)
                     hatches.add(fills[0])
                     sdi = {s.is_a(): s for s in fills[0].FillStyles}
                     clr = sdi.get('IfcColourRgb')
+                    rgb = None
                     if clr:
-                        clr.Red, clr.Green, clr.Blue
+                        rgb = clr.Red, clr.Green, clr.Blue
                     _, h_or_v, spacing = fills[0].Name.split("_")
-                    create_pattern(nm, h_or_v, float(spacing))
+                    create_pattern(nm, h_or_v, float(spacing), rgb)
     
         exp = OCC.Core.TopExp.TopExp_Explorer(ss, OCC.Core.TopAbs.TopAbs_FACE)
         while exp.More():
