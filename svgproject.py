@@ -111,7 +111,7 @@ obj = obj_model(fn3)
 hatches = set()
 
 def create_pattern(name, h_or_v, spacing, rgb=None):
-    spacing = str(spacing / 50.)
+    spacing = str(spacing / 100.)
 
     x2 = spacing if h_or_v.lower() == 'h' else '0'
     y2 = spacing if h_or_v.lower() == 'h' else '0'
@@ -129,9 +129,10 @@ def create_pattern(name, h_or_v, spacing, rgb=None):
     line.setAttribute('y1', spacing)
     line.setAttribute('x2', x2)
     line.setAttribute('y2', y2)
+    line.setAttribute('stroke-width', "0.25")
     clr = 'black'
     if rgb:
-        clr = "rgba(%s)" % ", ".join(str(f * 255.) for f in rgb)
+        clr = "%s(%s)" % ("rgba"[0:len(rgb)], ", ".join(str(f * 255.) for f in rgb))
     line.setAttribute('style', 'stroke: %s' % clr)
     pat.appendChild(line)
     defs.appendChild(pat)
@@ -277,7 +278,7 @@ for ii, (g, gg) in enumerate(zip(groups1, groups2)):
             
             
         clr_obj = clr
-        svg_fill = "rgba(%s)" % ", ".join(str(f * 255.) for f in clr)
+        svg_fill = "rgb(%s)" % ", ".join(str(f * 255.) for f in clr[0:3])
         
         if clr[0] == -1.:
             svg_fill = "none"
