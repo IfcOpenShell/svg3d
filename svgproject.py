@@ -35,6 +35,7 @@ shape_settings = ifcopenshell.geom.settings(USE_PYTHON_OPENCASCADE=True, APPLY_L
 
 shape_dict = {}
 face_style_dict = {}
+face_instance_dict = {}
 
 def loop_to_wire(coords):
     builder = OCC.Core.BRepBuilderAPI.BRepBuilderAPI_MakePolygon()
@@ -171,6 +172,7 @@ for e in ifcopenshell.geom.iterate(shape_settings, ifc_file, exclude=to_exclude)
         exp = OCC.Core.TopExp.TopExp_Explorer(ss, OCC.Core.TopAbs.TopAbs_FACE)
         while exp.More():
             face_style_dict[exp.Current()] = st, ref
+            face_instance_dict[exp.Current()] = ifc_file[e.data.guid]
             exp.Next()
             
 def yield_groups(n):
@@ -276,6 +278,9 @@ for ii, (g, gg) in enumerate(zip(groups1, groups2)):
             clr, hatch_ref = face_style_dict[closest_face]
             id = "".join(c for c in nm+closest.Name if c.isalnum())
             
+        inst = face_instance_dict.get(closest_face)
+        if inst:
+            p.setAttribute('class', inst.is_a())            
             
         clr_obj = clr
         svg_fill = "rgb(%s)" % ", ".join(str(f * 255.) for f in clr[0:3])
