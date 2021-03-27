@@ -14,6 +14,8 @@ from xml.dom.minidom import parse
 
 ifcfn, fn, fn2, fn3, fn4 = sys.argv[1:]
 
+SCALE = 50.
+NO_COLOURS = True
 
 dom1 = parse(fn)
 dom2 = parse(fn2)
@@ -59,18 +61,19 @@ def mesh(shape, deflection=0.01):
         face = OCC.Core.TopoDS.topods_Face(exp.Current())
         loc = OCC.Core.TopLoc.TopLoc_Location()
         triangulation = bt.Triangulation(face, loc)
-        trsf = loc.Transformation()
-        vertices = triangulation.Nodes()
+        if triangulation is not None:
+            trsf = loc.Transformation()
+            vertices = triangulation.Nodes()
 
-        vs = ["1-based"] + [vertices.Value(i + 1).Transformed(trsf) for i in range(triangulation.NbNodes())]
+            vs = ["1-based"] + [vertices.Value(i + 1).Transformed(trsf) for i in range(triangulation.NbNodes())]
 
-        tris = triangulation.Triangles()
-        for i in range(triangulation.NbTriangles()):
-            tri = tris.Value(i + 1)
-            pnts = tuple(map(vs.__getitem__, tri.Get()))
-            if face.Orientation() == OCC.Core.TopAbs.TopAbs_REVERSED:
-                pnts = pnts[::-1]
-            yield pnts
+            tris = triangulation.Triangles()
+            for i in range(triangulation.NbTriangles()):
+                tri = tris.Value(i + 1)
+                pnts = tuple(map(vs.__getitem__, tri.Get()))
+                if face.Orientation() == OCC.Core.TopAbs.TopAbs_REVERSED:
+                    pnts = pnts[::-1]
+                yield pnts
 
         exp.Next()
     
@@ -111,31 +114,52 @@ obj = obj_model(fn3)
 
 hatches = set()
 
-def create_pattern(name, h_or_v, spacing, rgb=None):
-    spacing = str(spacing / 100.)
-
-    x2 = spacing if h_or_v.lower() == 'h' else '0'
-    y2 = spacing if h_or_v.lower() == 'h' else '0'
-
+def create_pattern(name, h_or_v_spacing_pairs, rgb=None):
+    
+    spacing = {'h': None, 'v': None}
+    
+    for h_or_v, sp in h_or_v_spacing_pairs:
+        if spacing[h_or_v] is None or sp > spacing[h_or_v]:
+            spacing[h_or_v] = sp
+            
+    assert spacing['h'] is not None or spacing['v'] is not None
+    
+    if spacing['h'] is None: spacing['h'] = spacing['v']
+    if spacing['v'] is None: spacing['v'] = spacing['h']
+    
+    spacing['h'] = str(spacing['h'] / SCALE)
+    spacing['v'] = str(spacing['v'] / SCALE)
+    
     defs = svg1.getElementsByTagName('defs')[0]
     pat = dom1.createElement('pattern')
     pat.setAttribute('id', name)
     # pat.setAttribute('viewBox', ",".join(map(str, (0,0,spacing,spacing))))
-    pat.setAttribute('width', spacing)
-    pat.setAttribute('height', spacing)
+    pat.setAttribute('width', spacing['h'])
+    pat.setAttribute('height', spacing['v'])
     pat.setAttribute('patternTransform', 'translate(0,0) scale(1,1)')
     pat.setAttribute('patternUnits', 'userSpaceOnUse')
-    line = dom1.createElement('line')
-    line.setAttribute('x1', '0')
-    line.setAttribute('y1', spacing)
-    line.setAttribute('x2', x2)
-    line.setAttribute('y2', y2)
-    line.setAttribute('stroke-width', "0.25")
-    clr = 'black'
-    if rgb:
-        clr = "%s(%s)" % ("rgba"[0:len(rgb)], ", ".join(str(f * 255.) for f in rgb))
-    line.setAttribute('style', 'stroke: %s' % clr)
-    pat.appendChild(line)
+    
+    for h_or_v, sp in h_or_v_spacing_pairs:
+    
+        x2 = spacing['h'] if h_or_v == 'h' else '0'
+        y2 = spacing['v'] if h_or_v == 'h' else '0'
+
+        line = dom1.createElement('line')
+        
+        line.setAttribute('x1', '0')
+        line.setAttribute('y1', spacing['v'])
+        line.setAttribute('x2', x2)
+        line.setAttribute('y2', y2)
+        line.setAttribute('stroke-width', "0.25")
+        
+        clr = 'black'
+        if rgb:
+            clr = "%s(%s)" % ("rgba"[0:len(rgb)], ", ".join(str(f * 255.) for f in rgb))
+            
+        line.setAttribute('style', 'stroke: %s' % clr)
+        
+        pat.appendChild(line)
+
     defs.appendChild(pat)
     
 to_exclude = sum(map(ifc_file.by_type, ("IfcOpeningElement", "IfcSpace")), [])
@@ -166,8 +190,9 @@ for e in ifcopenshell.geom.iterate(shape_settings, ifc_file, exclude=to_exclude)
                     rgb = None
                     if clr:
                         rgb = clr.Red, clr.Green, clr.Blue
-                    _, h_or_v, spacing = fills[0].Name.split("_")
-                    create_pattern(nm, h_or_v, float(spacing), rgb)
+                    _, *h_or_v_and_spacing = fills[0].Name.split("_")
+                    h_or_v_spacing_pairs = [(h_or_v_and_spacing[i].lower(), float(h_or_v_and_spacing[i+1])) for i in range(0, len(h_or_v_and_spacing), 2)]
+                    create_pattern(nm, h_or_v_spacing_pairs, rgb)
     
         exp = OCC.Core.TopExp.TopExp_Explorer(ss, OCC.Core.TopAbs.TopAbs_FACE)
         while exp.More():
@@ -291,6 +316,8 @@ for ii, (g, gg) in enumerate(zip(groups1, groups2)):
             
         if hatch_ref:
             svg_fill = hatch_ref
+        elif NO_COLOURS:
+            svg_fill = "none"
                 
         p.setAttribute('style', "fill: " + svg_fill)
         
@@ -301,7 +328,11 @@ for ii, (g, gg) in enumerate(zip(groups1, groups2)):
         edge_loop_to_face = lambda edge_loop: list(map(operator.itemgetter(0), edge_loop))
                 
         segments = ["M"+s.strip() for s in d.split("M")[1:]]
-        vs_is = [(list(map(project, vs)), ids) for vs, ids in map(parse_path, segments)]     
+        vs_is = [(list(map(project, vs)), ids) for vs, ids in map(parse_path, segments)]
+        
+        if len(vs_is[0][1]) == 0:
+            continue
+        
         obj.write(id + "outer", clr_obj, *vs_is[0])
         
         if len(vs_is) == 1:        
