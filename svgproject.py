@@ -90,6 +90,9 @@ class obj_model:
         print("mtlib", os.path.basename(fn3)[:-4] + ".mtl", file=self.G)
         
     def write(self, id, clr, vs, idxs):
+        if not idxs:
+            return
+        
         m = self.style_name_dict.get(clr)
         if m is None:
             n = len(self.style_name_dict)
@@ -329,9 +332,6 @@ for ii, (g, gg) in enumerate(zip(groups1, groups2)):
                 
         segments = ["M"+s.strip() for s in d.split("M")[1:]]
         vs_is = [(list(map(project, vs)), ids) for vs, ids in map(parse_path, segments)]
-        
-        if len(vs_is[0][1]) == 0:
-            continue
         
         obj.write(id + "outer", clr_obj, *vs_is[0])
         
