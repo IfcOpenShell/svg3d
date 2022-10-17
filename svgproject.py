@@ -180,7 +180,7 @@ for e in ifcopenshell.geom.iterate(shape_settings, ifc_file, exclude=to_exclude)
         ref = None
 
         if sid != -1:                
-            style = ifc_file.get_inverse(ifc_file[sid])[0].Styles
+            style = list(ifc_file.get_inverse(ifc_file[sid]))[0].Styles
             fills = [i for i in style if i.is_a("IfcFillAreaStyle")]
             if fills:
                 nm = 'hatch_%d' % fills[0].id()
