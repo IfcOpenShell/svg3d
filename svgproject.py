@@ -63,9 +63,7 @@ def mesh(shape, deflection=0.01):
         triangulation = bt.Triangulation(face, loc)
         if triangulation is not None:
             trsf = loc.Transformation()
-            vertices = triangulation.Nodes()
-
-            vs = ["1-based"] + [vertices.Value(i + 1).Transformed(trsf) for i in range(triangulation.NbNodes())]
+            vs = ["1-based"] + [triangulation.Node(i + 1).Transformed(trsf) for i in range(triangulation.NbNodes())]
 
             tris = triangulation.Triangles()
             for i in range(triangulation.NbTriangles()):
@@ -180,7 +178,7 @@ for e in ifcopenshell.geom.iterate(shape_settings, ifc_file, exclude=to_exclude)
         ref = None
 
         if sid != -1:                
-            style = ifc_file.get_inverse(ifc_file[sid])[0].Styles
+            style = list(ifc_file.get_inverse(ifc_file[sid]))[0].Styles
             fills = [i for i in style if i.is_a("IfcFillAreaStyle")]
             if fills:
                 nm = 'hatch_%d' % fills[0].id()
