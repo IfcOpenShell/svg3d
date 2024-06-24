@@ -58,7 +58,7 @@ def mesh(shape, deflection=0.01):
 
     exp = OCC.Core.TopExp.TopExp_Explorer(shape, OCC.Core.TopAbs.TopAbs_FACE)
     while exp.More():
-        face = OCC.Core.TopoDS.topods_Face(exp.Current())
+        face = OCC.Core.TopoDS.topods.Face(exp.Current())
         loc = OCC.Core.TopLoc.TopLoc_Location()
         triangulation = bt.Triangulation(face, loc)
         if triangulation is not None:
@@ -292,7 +292,7 @@ for ii, (g, gg) in enumerate(zip(groups1, groups2)):
                 if u < min_u and ff.ShapeType() == OCC.Core.TopAbs.TopAbs_FACE:
                     min_u = u
                     closest = c
-                    closest_face = OCC.Core.TopoDS.topods_Face(ff)
+                    closest_face = OCC.Core.TopoDS.topods.Face(ff)
                     closest_point = dss.PointOnShape1(iii)
                     
         if closest_face is None:
